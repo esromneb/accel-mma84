@@ -39,6 +39,9 @@ function Accelerometer (hardware, callback) {
   // TODO: Account for manual address changes?
   self.i2c = hardware.I2C(I2C_ADDRESS);
 
+  // Squared value of magnitude required for shake event
+  self.shakeThreshold2 = 1.5*1.5;
+
   // Check that we can read the correct chip id
   self.queue.place(function one() {
     self._getChipID(function IDRead(err, c) {
@@ -133,14 +136,12 @@ Accelerometer.prototype._changeRegister = function(change, callback) {
 Accelerometer.prototype._processAcceleration = function(xyz) {
     var self = this;
 
-    // calculate mag squared of sample
+    // calculate magnitude squared of sample
     var mag2 = xyz[0]*xyz[0]+xyz[1]*xyz[1]*xyz[2]*xyz[2];
 
-    var shakeThreshold = 1.6*1.6; // square the threshold when storing it
-
     // compare the squared values for efficiency
-    if( mag2 > shakeThreshold ) {
-        self.emit('shake', Math.sqrt(mag2)); // call user function with the magnitude of shake event
+    if( mag2 >= self.shakeThreshold2 ) {
+        self.emit('shake', Math.sqrt(mag2)); // call user function with the unsquared magnitude of shake event
     }
 
 };
@@ -418,6 +419,20 @@ Accelerometer.prototype.setOutputRate = function (hz, callback) {
 Accelerometer.prototype.setScaleRange = function(scaleRange, callback) {
   this.queue.place(this._unsafeSetScaleRange.bind(this, scaleRange, callback));
 };
+
+Accelerometer.prototype.setShakeThreshold = function(threshold) {
+    var self = this;
+
+    if( threshold <= 0.0 ) {
+        err = new Error("Shake threshold must larger than zero");
+        return self._failProcedure(err);
+    }
+
+    self.shakeThreshold2 = threshold*threshold; // save squared value
+
+};
+
+
 
 function use (hardware, callback) {
   return new Accelerometer(hardware, callback);
