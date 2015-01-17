@@ -129,6 +129,22 @@ Accelerometer.prototype._changeRegister = function(change, callback) {
   });
 };
 
+// BJM
+Accelerometer.prototype._processAcceleration = function(xyz) {
+    var self = this;
+
+    // calculate mag squared of sample
+    var mag2 = xyz[0]*xyz[0]+xyz[1]*xyz[1]*xyz[2]*xyz[2];
+
+    var shakeThreshold = 1.6*1.6; // square the threshold when storing it
+
+    // compare the squared values for efficiency
+    if( mag2 > shakeThreshold ) {
+        self.emit('shake', Math.sqrt(mag2)); // call user function with the magnitude of shake event
+    }
+
+};
+
 Accelerometer.prototype._dataReady = function() {
   var self = this;
   // Data is ready so grab the data
@@ -143,6 +159,7 @@ Accelerometer.prototype._dataReady = function() {
       // Emit the data
       self.emit('data', xyz); // old-style, deprecated
       self.emit('sample', xyz);
+      self._processAcceleration(xyz);
     }
 
      self.dataInterrupt.once('low', self._dataReady.bind(self));
