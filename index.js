@@ -45,7 +45,8 @@ function Accelerometer (hardware, callback) {
   self.averageLength = 13;  // how many samples to process for a low pass filter
   self.averageIndex = 0;    // index into array
   self.previousValues = []; // array of previous xyz values
-  self.turbulenceThreshold = 0.2;
+  self.turbulenceThreshold = 0.125; // a movement threshold which will prevent orientation events
+  self.totalSamples = 0;  // running counter
 
   for(var i = 0; i < self.averageLength; i++) {
       self.previousValues[i] = [0,0,0];
@@ -161,7 +162,8 @@ Accelerometer.prototype._changeRegister = function(change, callback) {
   });
 };
 
-// BJM
+// Calculates the magnitude of the current sample and compares to a configurable threshold
+// When the threshold is met or passed, a 'shake' event is sent with the magnitude of the shake as the first parameter
 Accelerometer.prototype._detectShake = function(xyz) {
     var self = this;
 
@@ -173,8 +175,13 @@ Accelerometer.prototype._detectShake = function(xyz) {
         self.emit('shake', Math.sqrt(mag2)); // call user function with the unsquared magnitude of shake event
     }
 };
+
+// Detects device orientation.  Keeps a buffer of 'averageLength' previous samples to reduce noise
 Accelerometer.prototype._detectOrientation = function(xyz) {
     var self = this;
+
+    // counter
+    self.totalSamples++;
 
     // load sample into buffer
     self.previousValues[self.averageIndex] = xyz;
@@ -184,24 +191,32 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
 
     var averageAcceleration = [0, 0, 0];
 
-    // sum previous values
+    // sum all previous values which are in buffer
     for(i = 0; i < self.averageLength; i++) {
         averageAcceleration[0] += self.previousValues[i][0];
         averageAcceleration[1] += self.previousValues[i][1];
         averageAcceleration[2] += self.previousValues[i][2];
     }
 
-    // calculate "turbulence"
-//    for(i = 1; i < self.averageLength; i++) {
-//        averageAcceleration[0] += self.previousValues[i][0];
-//        averageAcceleration[1] += self.previousValues[i][1];
-//        averageAcceleration[2] += self.previousValues[i][2];
-//    }
-
     // divide by count for average
     averageAcceleration[0] /= self.averageLength;
     averageAcceleration[1] /= self.averageLength;
     averageAcceleration[2] /= self.averageLength;
+
+
+    var turbulence = 0;
+
+    // calculate "turbulence" of samples in buffer
+    // start loop from 1
+    for(i = 1; i < self.averageLength; i++) {
+        turbulence += Math.abs(self.previousValues[i][0]-self.previousValues[i-1][0]);
+        turbulence += Math.abs(self.previousValues[i][1]-self.previousValues[i-1][1]);
+        turbulence += Math.abs(self.previousValues[i][2]-self.previousValues[i-1][2]);
+    }
+
+    // normalize turbulence by dividing by (number of samples times number of axis)
+    turbulence = turbulence / (self.averageLength * 3);
+
 
     var maxDimension = Math.max(Math.abs(averageAcceleration[0]), Math.abs(averageAcceleration[1]), Math.abs(averageAcceleration[2]));
 
@@ -229,16 +244,16 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
             break;
     }
 
-    if(newOrientation != self.currentOrientation) {
-//        console.log(self.orientationName[newOrientation]);
+    if(newOrientation != self.currentOrientation && turbulence < this.turbulenceThreshold) {
         self.currentOrientation = newOrientation;
-
         self.emit('orientation', self.currentOrientation, self.orientationName[newOrientation]);
     }
 
-//    console.log(averageAcceleration[0].toFixed(2),',', averageAcceleration[1].toFixed(2),',', averageAcceleration[2].toFixed(2));
-//    console.log(xyz[0].toFixed(2),',', xyz[1].toFixed(2),',', xyz[2].toFixed(2));
-
+    // due to the way the handlers are registered, the first orientation event is never sent
+    // This it makes it nice for the users application to get an orientation event right away at boot
+    if( self.totalSamples == self.averageLength ) {
+        self.emit('orientation', self.currentOrientation, self.orientationName[newOrientation]);
+    }
 };
 
 Accelerometer.prototype._dataReady = function() {
