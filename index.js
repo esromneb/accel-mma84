@@ -137,7 +137,7 @@ Accelerometer.prototype._processAcceleration = function(xyz) {
     var self = this;
 
     // calculate magnitude squared of sample
-    var mag2 = xyz[0]*xyz[0]+xyz[1]*xyz[1]*xyz[2]*xyz[2];
+    var mag2 = xyz[0]*xyz[0]+xyz[1]*xyz[1]+xyz[2]*xyz[2];
 
     // compare the squared values for efficiency
     if( mag2 >= self.shakeThreshold2 ) {
