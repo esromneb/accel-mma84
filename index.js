@@ -42,15 +42,16 @@ function Accelerometer (hardware, callback) {
   // Squared value of magnitude required for shake event
   self.shakeThreshold2 = Math.pow(1.7, 2);
 
-  self.averageLength = 13;  // how many samples to process for a low pass filter
-  self.averageIndex = 0;    // index into array
-  self.previousValues = []; // array of previous xyz values
+  self.bufferLength = 13;  // how many samples to process for a low pass filter
+  self.bufferIndex = 0;    // index into sampleBuffer[]
+  self.sampleBuffer = [];  // array of previous xyz values
   self.orientationSuppression = 0.125; // a movement threshold which will prevent orientation events
   self.totalSamples = 0;  // running counter
-  self.currentTurbulence; // the total delta A in previousValues buffer
+  self.currentTurbulence; // the total delta A of samples in sampleBuffer[]
+  self.averageAcceleration = [0, 0, 0]; // averate acceleration in the sample buffer
 
-  for(var i = 0; i < self.averageLength; i++) {
-      self.previousValues[i] = [0,0,0];
+  for(var i = 0; i < self.bufferLength; i++) {
+      self.sampleBuffer[i] = [0,0,0];
   }
 
   self.orientation = {
@@ -177,7 +178,7 @@ Accelerometer.prototype._detectShake = function(xyz) {
     }
 };
 
-// Detects device orientation.  Keeps a buffer of 'averageLength' previous samples to reduce noise
+// Detects device orientation.  Keeps a buffer of 'bufferLength' previous samples to reduce noise
 Accelerometer.prototype._detectOrientation = function(xyz) {
     var self = this;
 
@@ -185,62 +186,62 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
     self.totalSamples++;
 
     // load sample into buffer
-    self.previousValues[self.averageIndex] = xyz;
+    self.sampleBuffer[self.bufferIndex] = xyz;
 
     // increment and wrap index
-    self.averageIndex = (self.averageIndex+1) % self.averageLength;
+    self.bufferIndex = (self.bufferIndex+1) % self.bufferLength;
 
-    var averageAcceleration = [0, 0, 0];
+    self.averageAcceleration = [0, 0, 0];
 
     // sum all previous values which are in buffer
-    for(i = 0; i < self.averageLength; i++) {
-        averageAcceleration[0] += self.previousValues[i][0];
-        averageAcceleration[1] += self.previousValues[i][1];
-        averageAcceleration[2] += self.previousValues[i][2];
+    for(i = 0; i < self.bufferLength; i++) {
+        self.averageAcceleration[0] += self.sampleBuffer[i][0];
+        self.averageAcceleration[1] += self.sampleBuffer[i][1];
+        self.averageAcceleration[2] += self.sampleBuffer[i][2];
     }
 
     // divide by count for average
-    averageAcceleration[0] /= self.averageLength;
-    averageAcceleration[1] /= self.averageLength;
-    averageAcceleration[2] /= self.averageLength;
+    self.averageAcceleration[0] /= self.bufferLength;
+    self.averageAcceleration[1] /= self.bufferLength;
+    self.averageAcceleration[2] /= self.bufferLength;
 
 
     self.currentTurbulence = 0;
 
     // calculate "turbulence" of samples in buffer, aka the sum of delta A of all samples in all axis
     // start loop from 1
-    for(i = 1; i < self.averageLength; i++) {
-        self.currentTurbulence += Math.abs(self.previousValues[i][0]-self.previousValues[i-1][0]);
-        self.currentTurbulence += Math.abs(self.previousValues[i][1]-self.previousValues[i-1][1]);
-        self.currentTurbulence += Math.abs(self.previousValues[i][2]-self.previousValues[i-1][2]);
+    for(i = 1; i < self.bufferLength; i++) {
+        self.currentTurbulence += Math.abs(self.sampleBuffer[i][0]-self.sampleBuffer[i-1][0]);
+        self.currentTurbulence += Math.abs(self.sampleBuffer[i][1]-self.sampleBuffer[i-1][1]);
+        self.currentTurbulence += Math.abs(self.sampleBuffer[i][2]-self.sampleBuffer[i-1][2]);
     }
 
     // normalize turbulence by dividing by (number of delta samples * number of axis)
-    self.currentTurbulence = self.currentTurbulence / ((self.averageLength-1) * 3);
+    self.currentTurbulence = self.currentTurbulence / ((self.bufferLength-1) * 3);
 
 
-    var maxDimension = Math.max(Math.abs(averageAcceleration[0]), Math.abs(averageAcceleration[1]), Math.abs(averageAcceleration[2]));
+    var maxDimension = Math.max(Math.abs(self.averageAcceleration[0]), Math.abs(self.averageAcceleration[1]), Math.abs(self.averageAcceleration[2]));
 
     var newOrientation;
 
     switch(maxDimension) {
-        case averageAcceleration[0]:
+        case self.averageAcceleration[0]:
             newOrientation = self.orientation.XUP;
             break;
-        case -1*averageAcceleration[0]:
+        case -1*self.averageAcceleration[0]:
             newOrientation = self.orientation.XDOWN;
             break;
-        case averageAcceleration[1]:
+        case self.averageAcceleration[1]:
             newOrientation = self.orientation.YUP;
             break;
-        case -1*averageAcceleration[1]:
+        case -1*self.averageAcceleration[1]:
             newOrientation = self.orientation.YDOWN;
             break;
-        case averageAcceleration[2]:
+        case self.averageAcceleration[2]:
             newOrientation = self.orientation.ZUP;
             break;
         default:
-        case -1*averageAcceleration[2]:
+        case -1*self.averageAcceleration[2]:
             newOrientation = self.orientation.ZDOWN;
             break;
     }
@@ -252,7 +253,7 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
 
     // due to the way the handlers are registered, the first orientation event is never sent
     // This it makes it nice for the users application to get an orientation event right away at boot
-    if( self.totalSamples == self.averageLength ) {
+    if( self.totalSamples == self.bufferLength ) {
         self.emit('orientation', self.currentOrientation, self.orientationName[newOrientation]);
     }
 };
@@ -534,6 +535,7 @@ Accelerometer.prototype.setScaleRange = function(scaleRange, callback) {
 
 // Set the magnitude which will trigger a shake event.  Since the magnitude of gravity is a 1.0
 // a good range for this is 1.5 - 3
+// lower values are more sensative to a shake event
 Accelerometer.prototype.setShakeThreshold = function(threshold) {
     var self = this;
 
@@ -573,6 +575,38 @@ Accelerometer.prototype.setOrientationSuppression = function(threshold) {
     self.orientationSuppression = threshold;
 };
 
+// Sets the length of the running buffer which affects orientation events as well as turbulence
+// If the sample rate is 12.5 (the default) a buffer length of 13 will result in about a 1 second
+// delay between flipping the device and an orientation event.
+// Lower this value for quicker less accurate orientation change events
+Accelerometer.prototype.setSampleBufferLength = function(length) {
+    var self = this;
+
+    // Calculations elsewhere assume this value is 2 or greater
+    var minimumLength = 2;
+
+    if( length < minimumLength ) {
+        err = new Error("Sample Buffer length must " + minimumLength + " or larger");
+        return self._failProcedure(err);
+    }
+
+    self.bufferLength = length;
+
+    // reset buffer
+    self.bufferIndex = 0;
+    self.sampleBuffer = [];  // array of previous xyz values
+    for(var i = 0; i < self.bufferLength; i++) {
+        self.sampleBuffer[i] = [0,0,0];
+    }
+
+};
+
+// returns the average acceleration of the samples in the sample buffer
+Accelerometer.prototype.getAverageAcceleration = function() {
+    var self = this;
+
+    return self.averageAcceleration;
+};
 
 
 function use (hardware, callback) {

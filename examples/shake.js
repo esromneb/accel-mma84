@@ -21,6 +21,7 @@ accel.on('ready', function () {
 //            'y:', xyz[1].toFixed(2),
 //            'z:', xyz[2].toFixed(2));
 //        console.log(accel.getTurbulence());
+        console.log(accel.getAverageAcceleration());
     });
 
     accel.on('funtime', function (xyz) {
@@ -39,6 +40,16 @@ accel.on('ready', function () {
 //    accel.setOrientationSuppression(0.0001001);
 //    accel.setOrientationSuppression(0.3);
 //    accel.setOrientationSuppression(0.005);
+
+//      accel.setSampleBufferLength(3);
+
+
+    //After a delay change buffer length
+//    setTimeout(function () {
+//        console.log('Changing...');
+//        accel.setSampleBufferLength(200);
+//    }, 5000);
+
 
 });
 
