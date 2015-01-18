@@ -40,7 +40,36 @@ function Accelerometer (hardware, callback) {
   self.i2c = hardware.I2C(I2C_ADDRESS);
 
   // Squared value of magnitude required for shake event
-  self.shakeThreshold2 = 1.5*1.5;
+  self.shakeThreshold2 = Math.pow(1.7, 2);
+
+  self.averageLength = 13;  // how many samples to process for a low pass filter
+  self.averageIndex = 0;    // index into array
+  self.previousValues = []; // array of previous xyz values
+  self.turbulenceThreshold = 0.2;
+
+  for(var i = 0; i < self.averageLength; i++) {
+      self.previousValues[i] = [0,0,0];
+  }
+
+  self.orientation = {
+      XUP : 0,
+      XDOWN : 1,
+      YUP : 2,
+      YDOWN : 3,
+      ZUP : 4,
+      ZDOWN : 5
+  };
+
+  self.orientationName = {
+      0 : "x up",
+      1 : "x down",
+      2 : "y up",
+      3 : "y down",
+      4 : "z up",
+      5 : "z down"
+  };
+
+  self.currentOrientation = -1; // start with invalid orientation
 
   // Check that we can read the correct chip id
   self.queue.place(function one() {
@@ -137,12 +166,75 @@ Accelerometer.prototype._processAcceleration = function(xyz) {
     var self = this;
 
     // calculate magnitude squared of sample
-    var mag2 = xyz[0]*xyz[0]+xyz[1]*xyz[1]+xyz[2]*xyz[2];
+    var mag2 = xyz[0]*xyz[0] + xyz[1]*xyz[1] + xyz[2]*xyz[2];
 
     // compare the squared values for efficiency
-    if( mag2 >= self.shakeThreshold2 ) {
+    if(mag2 >= self.shakeThreshold2) {
         self.emit('shake', Math.sqrt(mag2)); // call user function with the unsquared magnitude of shake event
     }
+
+    // load sample into buffer
+    self.previousValues[self.averageIndex] = xyz;
+
+    // increment and wrap index
+    self.averageIndex = (self.averageIndex+1) % self.averageLength;
+
+    var averageAcceleration = [0, 0, 0];
+
+    // sum previous values
+    for(i = 0; i < self.averageLength; i++) {
+        averageAcceleration[0] += self.previousValues[i][0];
+        averageAcceleration[1] += self.previousValues[i][1];
+        averageAcceleration[2] += self.previousValues[i][2];
+    }
+
+    // calculate "turbulence"
+//    for(i = 1; i < self.averageLength; i++) {
+//        averageAcceleration[0] += self.previousValues[i][0];
+//        averageAcceleration[1] += self.previousValues[i][1];
+//        averageAcceleration[2] += self.previousValues[i][2];
+//    }
+
+    // divide by count for average
+    averageAcceleration[0] /= self.averageLength;
+    averageAcceleration[1] /= self.averageLength;
+    averageAcceleration[2] /= self.averageLength;
+
+    var maxDimension = Math.max(Math.abs(averageAcceleration[0]), Math.abs(averageAcceleration[1]), Math.abs(averageAcceleration[2]));
+
+    var newOrientation;
+
+    switch(maxDimension) {
+        case averageAcceleration[0]:
+            newOrientation = self.orientation.XUP;
+            break;
+        case -1*averageAcceleration[0]:
+            newOrientation = self.orientation.XDOWN;
+            break;
+        case averageAcceleration[1]:
+            newOrientation = self.orientation.YUP;
+            break;
+        case -1*averageAcceleration[1]:
+            newOrientation = self.orientation.YDOWN;
+            break;
+        case averageAcceleration[2]:
+            newOrientation = self.orientation.ZUP;
+            break;
+        default:
+        case -1*averageAcceleration[2]:
+            newOrientation = self.orientation.ZDOWN;
+            break;
+    }
+
+    if(newOrientation != self.currentOrientation) {
+//        console.log(self.orientationName[newOrientation]);
+        self.currentOrientation = newOrientation;
+
+        self.emit('orientation', self.currentOrientation, self.orientationName[newOrientation]);
+    }
+
+//    console.log(averageAcceleration[0].toFixed(2),',', averageAcceleration[1].toFixed(2),',', averageAcceleration[2].toFixed(2));
+//    console.log(xyz[0].toFixed(2),',', xyz[1].toFixed(2),',', xyz[2].toFixed(2));
 
 };
 

@@ -30,7 +30,11 @@ accel.on('ready', function () {
         console.log('Detected shake with magnitude: ' + mag.toFixed(2));
     });
 
-    accel.setShakeThreshold(1.1);
+    accel.on('orientation', function (orientationInteger, orientationName) {
+        console.log('Detected new orientation: ' + orientationName);
+    });
+
+//    accel.setShakeThreshold(1.1);
 
 });
 
