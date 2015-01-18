@@ -45,8 +45,9 @@ function Accelerometer (hardware, callback) {
   self.averageLength = 13;  // how many samples to process for a low pass filter
   self.averageIndex = 0;    // index into array
   self.previousValues = []; // array of previous xyz values
-  self.turbulenceThreshold = 0.125; // a movement threshold which will prevent orientation events
+  self.orientationSuppression = 0.125; // a movement threshold which will prevent orientation events
   self.totalSamples = 0;  // running counter
+  self.currentTurbulence; // the total delta A in previousValues buffer
 
   for(var i = 0; i < self.averageLength; i++) {
       self.previousValues[i] = [0,0,0];
@@ -204,18 +205,18 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
     averageAcceleration[2] /= self.averageLength;
 
 
-    var turbulence = 0;
+    self.currentTurbulence = 0;
 
-    // calculate "turbulence" of samples in buffer
+    // calculate "turbulence" of samples in buffer, aka the sum of delta A of all samples in all axis
     // start loop from 1
     for(i = 1; i < self.averageLength; i++) {
-        turbulence += Math.abs(self.previousValues[i][0]-self.previousValues[i-1][0]);
-        turbulence += Math.abs(self.previousValues[i][1]-self.previousValues[i-1][1]);
-        turbulence += Math.abs(self.previousValues[i][2]-self.previousValues[i-1][2]);
+        self.currentTurbulence += Math.abs(self.previousValues[i][0]-self.previousValues[i-1][0]);
+        self.currentTurbulence += Math.abs(self.previousValues[i][1]-self.previousValues[i-1][1]);
+        self.currentTurbulence += Math.abs(self.previousValues[i][2]-self.previousValues[i-1][2]);
     }
 
-    // normalize turbulence by dividing by (number of samples times number of axis)
-    turbulence = turbulence / (self.averageLength * 3);
+    // normalize turbulence by dividing by (number of delta samples * number of axis)
+    self.currentTurbulence = self.currentTurbulence / ((self.averageLength-1) * 3);
 
 
     var maxDimension = Math.max(Math.abs(averageAcceleration[0]), Math.abs(averageAcceleration[1]), Math.abs(averageAcceleration[2]));
@@ -244,7 +245,7 @@ Accelerometer.prototype._detectOrientation = function(xyz) {
             break;
     }
 
-    if(newOrientation != self.currentOrientation && turbulence < this.turbulenceThreshold) {
+    if(newOrientation != self.currentOrientation && self.currentTurbulence < this.orientationSuppression) {
         self.currentOrientation = newOrientation;
         self.emit('orientation', self.currentOrientation, self.orientationName[newOrientation]);
     }
@@ -531,6 +532,8 @@ Accelerometer.prototype.setScaleRange = function(scaleRange, callback) {
   this.queue.place(this._unsafeSetScaleRange.bind(this, scaleRange, callback));
 };
 
+// Set the magnitude which will trigger a shake event.  Since the magnitude of gravity is a 1.0
+// a good range for this is 1.5 - 3
 Accelerometer.prototype.setShakeThreshold = function(threshold) {
     var self = this;
 
@@ -539,8 +542,35 @@ Accelerometer.prototype.setShakeThreshold = function(threshold) {
         return self._failProcedure(err);
     }
 
-    self.shakeThreshold2 = threshold*threshold; // save squared value
+    self.shakeThreshold2 = Math.pow(threshold, 2); // save squared value
+};
 
+// Returns "turbulence" in sample buffer.  May be outdated by one sample
+Accelerometer.prototype.getTurbulence = function() {
+    var self = this;
+
+    return self.currentTurbulence;
+};
+
+// Sets the orientation suppression threshold: delaying orientation changes until
+// the turbulence (average delta A per sample) in the sample buffer is less than this value.
+// The noise from a mma84 board at reset generates a delta A of about 0.001
+// Lower values mean that board must be more steady to generate an orientation change
+// Higher values mean that the board can be jiggling and still generate an orientation change
+// A good range is 0.005 - 0.3
+// Disable this feature by setting this to 100
+Accelerometer.prototype.setOrientationSuppression = function(threshold) {
+    var self = this;
+
+    // a threshold set at this level will always prevent orientation changes due to noise
+    var minimumThreshold = 0.0001;
+
+    if( threshold <= minimumThreshold ) {
+        err = new Error("Orientation Suppression threshold must larger than " + minimumThreshold);
+        return self._failProcedure(err);
+    }
+
+    self.orientationSuppression = threshold;
 };
 
 

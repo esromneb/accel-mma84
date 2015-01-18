@@ -20,6 +20,7 @@ accel.on('ready', function () {
 //        console.log('x:', xyz[0].toFixed(2),
 //            'y:', xyz[1].toFixed(2),
 //            'z:', xyz[2].toFixed(2));
+//        console.log(accel.getTurbulence());
     });
 
     accel.on('funtime', function (xyz) {
@@ -35,6 +36,9 @@ accel.on('ready', function () {
     });
 
 //    accel.setShakeThreshold(1.1);
+//    accel.setOrientationSuppression(0.0001001);
+//    accel.setOrientationSuppression(0.3);
+//    accel.setOrientationSuppression(0.005);
 
 });
 
