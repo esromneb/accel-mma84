@@ -162,7 +162,7 @@ Accelerometer.prototype._changeRegister = function(change, callback) {
 };
 
 // BJM
-Accelerometer.prototype._processAcceleration = function(xyz) {
+Accelerometer.prototype._detectShake = function(xyz) {
     var self = this;
 
     // calculate magnitude squared of sample
@@ -172,6 +172,9 @@ Accelerometer.prototype._processAcceleration = function(xyz) {
     if(mag2 >= self.shakeThreshold2) {
         self.emit('shake', Math.sqrt(mag2)); // call user function with the unsquared magnitude of shake event
     }
+};
+Accelerometer.prototype._detectOrientation = function(xyz) {
+    var self = this;
 
     // load sample into buffer
     self.previousValues[self.averageIndex] = xyz;
@@ -252,7 +255,8 @@ Accelerometer.prototype._dataReady = function() {
       // Emit the data
       self.emit('data', xyz); // old-style, deprecated
       self.emit('sample', xyz);
-      self._processAcceleration(xyz);
+      self._detectShake(xyz);
+      self._detectOrientation(xyz);
     }
 
      self.dataInterrupt.once('low', self._dataReady.bind(self));
