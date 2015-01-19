@@ -120,9 +120,12 @@ function Accelerometer (hardware, callback) {
     });
   });
 
+  var dataEvents = ['data', 'sample', 'orientation', 'shake'];
+
   self.on('newListener', function(event) {
     // If we have a new sample listener
-    if (event == 'data' || event == 'sample') {
+    if (dataEvents.indexOf(event) !== -1) {
+//      if (event == 'data' || event == 'sample') {
       // Enable interrupts at whatever rate was previously set
       self.enableDataInterrupts(true, self.queue.next);
     }
@@ -130,7 +133,7 @@ function Accelerometer (hardware, callback) {
 
   self.on('removeListener', function(event) {
     // If we have a new || event == 'sample' listener
-    if (event == 'data' || event == 'sample') {
+    if (dataEvents.indexOf(event) !== -1) {
       // Disable interrupt.
       self.enableDataInterrupts(false, self.queue.next);
     }
